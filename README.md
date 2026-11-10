@@ -2,7 +2,9 @@
 
 A showcase site for **transparent tech mods**: clear-shell consoles, crystal keyboards, glass-back phones, and anything else that puts the circuitry on display.
 
-The UI is frosted glass over a live, procedurally generated circuit board. Traces carry signal pulses and LEDs blink behind the panels. A clear "lens" follows your cursor so you can see through the frost, and the 👁 **X-ray** button exposes the internals even more.
+The site is designed like a museum catalogue of see-through objects. Every mod is an "exhibit" with a catalogue number (T-001, T-002, …) and a spec sheet. Behind the glass panels, a clear circuit board with hairline copper traces is generated on load. Signal pulses run along the traces, LEDs blink, and a clearer patch follows your cursor. The **X-ray** toggle removes the frost entirely.
+
+**Typography:** [Instrument Serif](https://fonts.google.com/specimen/Instrument+Serif) for display headings, [Geist](https://fonts.google.com/specimen/Geist) for body text, and [Geist Mono](https://fonts.google.com/specimen/Geist+Mono) for labels and data.
 
 ## Features
 

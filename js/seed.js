@@ -13,115 +13,122 @@
     };
   }
 
-  // a little PCB drawn inside a box
+  // Studio-shot styling: clear shells on a pale seamless backdrop,
+  // dark boards with gold traces visible through the plastic.
+  const O = "rgba(22, 30, 34, .42)";       // shell outline
+  const OH = "rgba(255, 255, 255, .95)";   // shell highlight
+  const F = "rgba(255, 255, 255, .28)";    // clear part fill
+  const FD = "rgba(22, 30, 34, .55)";      // detail outline
+
   function pcb(x, y, w, h, hue, rand, opts = {}) {
-    let s = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${opts.rx ?? 10}" fill="hsl(${hue} 45% 14% / .9)" stroke="hsl(${hue} 70% 60% / .35)"/>`;
-    // traces
-    for (let i = 0; i < 26; i++) {
+    let s = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${opts.rx ?? 8}" fill="hsl(${hue} 28% 17%)"/>`;
+    for (let i = 0; i < 28; i++) {
       let px = x + 8 + rand() * (w - 16), py = y + 8 + rand() * (h - 16);
       let d = `M${px.toFixed(1)} ${py.toFixed(1)}`;
       for (let k = 0; k < 3; k++) {
-        const horiz = rand() < 0.5;
-        const len = 10 + rand() * 50;
-        if (horiz) px = Math.max(x + 6, Math.min(x + w - 6, px + (rand() < 0.5 ? -len : len)));
+        const len = 10 + rand() * 46;
+        if (rand() < 0.5) px = Math.max(x + 6, Math.min(x + w - 6, px + (rand() < 0.5 ? -len : len)));
         else py = Math.max(y + 6, Math.min(y + h - 6, py + (rand() < 0.5 ? -len : len)));
-        const dg = 6 + rand() * 10;
-        if (rand() < 0.5) { px = Math.min(x + w - 6, px + dg); py = Math.min(y + h - 6, py + dg); }
+        if (rand() < 0.5) { const dg = 6 + rand() * 10; px = Math.min(x + w - 6, px + dg); py = Math.min(y + h - 6, py + dg); }
         d += ` L${px.toFixed(1)} ${py.toFixed(1)}`;
       }
-      s += `<path d="${d}" fill="none" stroke="hsl(${hue} 80% 70% / ${(0.25 + rand() * 0.45).toFixed(2)})" stroke-width="${rand() < 0.15 ? 2.4 : 1.2}" stroke-linecap="round" stroke-linejoin="round"/>`;
-      s += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.4" fill="hsl(40 60% 60% / .7)"/>`;
+      s += `<path d="${d}" fill="none" stroke="hsl(40 62% 62% / ${(0.35 + rand() * 0.45).toFixed(2)})" stroke-width="${rand() < 0.15 ? 2.2 : 1}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      s += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.2" fill="none" stroke="hsl(40 62% 66% / .8)"/>`;
     }
-    // chips
     const n = opts.chips ?? 3;
     for (let i = 0; i < n; i++) {
-      const cw = 22 + rand() * Math.min(60, w * 0.3), ch = 18 + rand() * Math.min(40, h * 0.25);
+      const cw = 22 + rand() * Math.min(56, w * 0.3), ch = 18 + rand() * Math.min(38, h * 0.25);
       const cx = x + 10 + rand() * (w - cw - 20), cy = y + 10 + rand() * (h - ch - 20);
-      s += `<rect x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" rx="3" fill="#0c1112" stroke="hsl(${hue} 50% 70% / .35)"/>`;
       for (let p = 0; p < cw - 6; p += 5) {
-        s += `<rect x="${(cx + 3 + p).toFixed(1)}" y="${(cy - 3).toFixed(1)}" width="2" height="3" fill="hsl(40 50% 65% / .7)"/>`;
-        s += `<rect x="${(cx + 3 + p).toFixed(1)}" y="${(cy + ch).toFixed(1)}" width="2" height="3" fill="hsl(40 50% 65% / .7)"/>`;
+        s += `<rect x="${(cx + 3 + p).toFixed(1)}" y="${(cy - 3).toFixed(1)}" width="2" height="3" fill="#c9cfd0"/><rect x="${(cx + 3 + p).toFixed(1)}" y="${(cy + ch).toFixed(1)}" width="2" height="3" fill="#c9cfd0"/>`;
       }
-      s += `<circle cx="${(cx + 5).toFixed(1)}" cy="${(cy + 5).toFixed(1)}" r="1.5" fill="#ffffff44"/>`;
+      s += `<rect x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" width="${cw.toFixed(1)}" height="${ch.toFixed(1)}" rx="2" fill="#15191b"/><circle cx="${(cx + 5).toFixed(1)}" cy="${(cy + 5).toFixed(1)}" r="1.4" fill="#ffffff40"/>`;
     }
-    // LEDs
-    for (let i = 0; i < 4; i++) {
-      const lx = x + 10 + rand() * (w - 20), ly = y + 10 + rand() * (h - 20);
-      const lh = (hue + 140 + rand() * 60) % 360;
-      s += `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="9" fill="url(#led${lh.toFixed(0)})"/><circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="1.8" fill="#fff"/>`;
-      s += `<defs><radialGradient id="led${lh.toFixed(0)}"><stop offset="0" stop-color="hsl(${lh} 100% 70% / .9)"/><stop offset="1" stop-color="hsl(${lh} 100% 70% / 0)"/></radialGradient></defs>`;
+    for (let i = 0; i < 3; i++) {
+      const lx = x + 12 + rand() * (w - 24), ly = y + 12 + rand() * (h - 24);
+      const lh = [150, 8, 200][i];
+      s += `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="10" fill="hsl(${lh} 100% 60% / .28)"/><rect x="${(lx - 2.5).toFixed(1)}" y="${(ly - 1.5).toFixed(1)}" width="5" height="3" fill="hsl(${lh} 100% 75%)"/>`;
     }
     return s;
   }
 
-  const shell = (hue) => `fill="hsl(${hue} 60% 85% / .10)" stroke="hsl(${hue} 80% 92% / .65)" stroke-width="2"`;
+  const shell = (hue) => `fill="hsl(${hue} 55% 80% / .16)" stroke="${O}" stroke-width="1.6"`;
+  const rim = (x, y, w, h, rx) => `<rect x="${x + 3}" y="${y + 3}" width="${w - 6}" height="${h - 6}" rx="${rx - 3}" fill="none" stroke="${OH}" stroke-width="1.4" opacity=".8"/>`;
 
   const DEVICES = {
     handheld(h, r) {
-      return pcb(225, 70, 190, 330, h, r, { chips: 3 }) +
-        `<rect x="210" y="40" width="220" height="370" rx="26" ${shell(h)}/>` +
-        `<rect x="238" y="70" width="164" height="128" rx="8" fill="hsl(${h} 30% 8% / .85)" stroke="#ffffff40"/>` +
-        `<rect x="250" y="82" width="140" height="104" rx="3" fill="hsl(${h} 70% 60% / .22)"/>` +
-        `<path d="M262 262h16v-16h16v16h16v16h-16v16h-16v-16h-16z" fill="#ffffff22" stroke="#ffffff80"/>` +
-        `<circle cx="372" cy="258" r="14" fill="#ffffff1a" stroke="#ffffff90"/><circle cx="344" cy="282" r="14" fill="#ffffff1a" stroke="#ffffff90"/>` +
-        `<rect x="290" y="340" width="26" height="8" rx="4" fill="#ffffff22" stroke="#ffffff70"/><rect x="326" y="340" width="26" height="8" rx="4" fill="#ffffff22" stroke="#ffffff70"/>`;
+      return pcb(225, 72, 190, 326, h, r) +
+        `<rect x="210" y="40" width="220" height="370" rx="26" ${shell(h)}/>` + rim(210, 40, 220, 370, 26) +
+        `<rect x="238" y="70" width="164" height="128" rx="8" fill="#14191b" stroke="${FD}"/>` +
+        `<rect x="250" y="82" width="140" height="104" rx="2" fill="hsl(${h} 45% 62% / .35)"/>` +
+        `<path d="M262 262h16v-16h16v16h16v16h-16v16h-16v-16h-16z" fill="${F}" stroke="${FD}"/>` +
+        `<circle cx="372" cy="258" r="14" fill="${F}" stroke="${FD}"/><circle cx="344" cy="282" r="14" fill="${F}" stroke="${FD}"/>` +
+        `<rect x="290" y="340" width="26" height="8" rx="4" fill="${F}" stroke="${FD}"/><rect x="326" y="340" width="26" height="8" rx="4" fill="${F}" stroke="${FD}"/>`;
     },
     keyboard(h, r) {
       let keys = "";
       for (let row = 0; row < 5; row++) for (let c = 0; c < 14; c++) {
-        if (row === 4 && c > 3 && c < 10) { if (c === 4) keys += `<rect x="${92 + 4 * 33}" y="${148 + row * 36}" width="${6 * 33 - 5}" height="30" rx="6" fill="#ffffff12" stroke="#ffffff70"/>`; continue; }
-        keys += `<rect x="${92 + c * 33}" y="${148 + row * 36}" width="28" height="30" rx="6" fill="#ffffff12" stroke="#ffffff70"/>`;
+        if (row === 4 && c > 3 && c < 10) { if (c === 4) keys += `<rect x="${92 + 4 * 33}" y="${148 + row * 36}" width="${6 * 33 - 5}" height="30" rx="5" fill="${F}" stroke="${FD}"/>`; continue; }
+        keys += `<rect x="${92 + c * 33}" y="${148 + row * 36}" width="28" height="30" rx="5" fill="${F}" stroke="${FD}"/>`;
       }
       return pcb(84, 140, 472, 186, h, r, { chips: 2, rx: 6 }) +
-        `<rect x="70" y="124" width="500" height="218" rx="18" ${shell(h)}/>` + keys;
+        `<rect x="70" y="124" width="500" height="218" rx="18" ${shell(h)}/>` + rim(70, 124, 500, 218, 18) + keys;
     },
     phone(h, r) {
-      return pcb(250, 70, 140, 140, h, r, { chips: 3 }) +
-        `<rect x="252" y="220" width="136" height="150" rx="10" fill="hsl(${h} 30% 30% / .35)" stroke="#ffffff50"/>` +
-        `<text x="320" y="300" text-anchor="middle" font-family="monospace" font-size="11" fill="#ffffff70">Li-ion 3.85V</text>` +
-        `<rect x="236" y="44" width="168" height="352" rx="30" ${shell(h)}/>` +
-        `<rect x="254" y="62" width="58" height="58" rx="14" fill="#0a0f10cc" stroke="#ffffffa0"/>` +
-        `<circle cx="270" cy="78" r="9" fill="#0b1416" stroke="#ffffff80"/><circle cx="296" cy="104" r="9" fill="#0b1416" stroke="#ffffff80"/>`;
+      return pcb(250, 70, 140, 140, h, r) +
+        `<rect x="252" y="220" width="136" height="150" rx="10" fill="hsl(${h} 12% 26%)"/>` +
+        `<text x="320" y="300" text-anchor="middle" font-family="monospace" font-size="11" fill="#ffffff80">Li-ion 3.85V</text>` +
+        `<rect x="236" y="44" width="168" height="352" rx="30" ${shell(h)}/>` + rim(236, 44, 168, 352, 30) +
+        `<rect x="254" y="62" width="58" height="58" rx="14" fill="#15191bdd" stroke="${FD}"/>` +
+        `<circle cx="270" cy="78" r="9" fill="#0b0e0f" stroke="#ffffff60"/><circle cx="296" cy="104" r="9" fill="#0b0e0f" stroke="#ffffff60"/>`;
     },
     controller(h, r) {
+      const body = "M200 140c-60 0-100 40-112 120-10 70 30 110 70 90 30-16 40-60 82-60h160c42 0 52 44 82 60 40 20 80-20 70-90-12-80-52-120-112-120z";
       return pcb(200, 150, 240, 120, h, r, { chips: 2 }) +
-        `<path d="M200 140c-60 0-100 40-112 120-10 70 30 110 70 90 30-16 40-60 82-60h160c42 0 52 44 82 60 40 20 80-20 70-90-12-80-52-120-112-120z" ${shell(h)}/>` +
-        `<circle cx="215" cy="210" r="28" fill="#ffffff14" stroke="#ffffff90"/><circle cx="380" cy="268" r="28" fill="#ffffff14" stroke="#ffffff90"/>` +
-        `<circle cx="440" cy="180" r="11" fill="#ffffff18" stroke="#ffffff90"/><circle cx="470" cy="206" r="11" fill="#ffffff18" stroke="#ffffff90"/><circle cx="410" cy="206" r="11" fill="#ffffff18" stroke="#ffffff90"/><circle cx="440" cy="232" r="11" fill="#ffffff18" stroke="#ffffff90"/>`;
+        `<path d="${body}" ${shell(h)}/>` +
+        `<circle cx="215" cy="210" r="28" fill="${F}" stroke="${FD}"/><circle cx="380" cy="268" r="28" fill="${F}" stroke="${FD}"/>` +
+        `<circle cx="440" cy="180" r="11" fill="${F}" stroke="${FD}"/><circle cx="470" cy="206" r="11" fill="${F}" stroke="${FD}"/><circle cx="410" cy="206" r="11" fill="${F}" stroke="${FD}"/><circle cx="440" cy="232" r="11" fill="${F}" stroke="${FD}"/>`;
     },
     console(h, r) {
       let vents = "";
-      for (let i = 0; i < 14; i++) vents += `<rect x="${150 + i * 25}" y="96" width="12" height="4" rx="2" fill="#ffffff40"/>`;
+      for (let i = 0; i < 14; i++) vents += `<rect x="${150 + i * 25}" y="96" width="12" height="4" rx="2" fill="${FD}"/>`;
       return pcb(140, 120, 360, 200, h, r, { chips: 4, rx: 4 }) +
-        `<circle cx="430" cy="220" r="52" fill="none" stroke="#ffffff60" stroke-dasharray="4 6"/><circle cx="430" cy="220" r="10" fill="#ffffff30"/>` +
-        `<rect x="120" y="80" width="400" height="260" rx="22" ${shell(h)}/>` + vents +
-        `<circle cx="160" cy="312" r="8" fill="hsl(${h} 90% 70%)"/>`;
+        `<circle cx="430" cy="220" r="52" fill="none" stroke="#ffffff70" stroke-dasharray="4 6"/>` +
+        `<rect x="120" y="80" width="400" height="260" rx="22" ${shell(h)}/>` + rim(120, 80, 400, 260, 22) + vents +
+        `<circle cx="160" cy="312" r="6" fill="hsl(150 90% 50%)"/><circle cx="160" cy="312" r="14" fill="hsl(150 90% 50% / .25)"/>`;
     },
     earbuds(h, r) {
-      return pcb(230, 210, 180, 110, h, r, { chips: 2 }) +
-        `<rect x="210" y="110" width="220" height="230" rx="80" ${shell(h)}/>` +
-        `<line x1="214" y1="200" x2="426" y2="200" stroke="#ffffff70" stroke-width="1.5"/>` +
-        `<ellipse cx="275" cy="168" rx="26" ry="34" fill="#ffffff16" stroke="#ffffffa0"/><ellipse cx="365" cy="168" rx="26" ry="34" fill="#ffffff16" stroke="#ffffffa0"/>` +
-        `<circle cx="275" cy="160" r="8" fill="hsl(${h} 70% 70% / .6)"/><circle cx="365" cy="160" r="8" fill="hsl(${h} 70% 70% / .6)"/>`;
+      // case with two buds seated in the lid well, stems pointing down
+      const bud = (cx) =>
+        `<rect x="${cx - 9}" y="150" width="18" height="46" rx="9" fill="${F}" stroke="${FD}"/>` +
+        `<ellipse cx="${cx}" cy="148" rx="22" ry="20" fill="${F}" stroke="${FD}"/>` +
+        `<ellipse cx="${cx + 6}" cy="142" rx="7" ry="5" fill="rgba(22,30,34,.18)"/>`;
+      return pcb(230, 214, 180, 106, h, r, { chips: 2 }) +
+        `<rect x="210" y="110" width="220" height="230" rx="80" ${shell(h)}/>` + rim(210, 110, 220, 230, 80) +
+        `<line x1="214" y1="206" x2="426" y2="206" stroke="${FD}" stroke-width="1.2"/>` +
+        bud(280) + bud(360) +
+        `<rect x="306" y="326" width="28" height="8" rx="3" fill="#15191b" opacity=".6"/>`;
     },
     board(h, r) {
-      return pcb(110, 70, 420, 310, h, r, { chips: 6, rx: 14 }) +
-        `<rect x="96" y="56" width="448" height="338" rx="20" fill="none" stroke="#ffffff30" stroke-dasharray="6 8"/>`;
+      return pcb(110, 70, 420, 310, h, r, { chips: 6, rx: 12 });
     },
   };
 
   function art(kind, hue, seed) {
     const r = rng(seed);
     const body = (DEVICES[kind] || DEVICES.board)(hue, r);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 450">
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480">
       <defs>
-        <radialGradient id="bg" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="hsl(${hue} 40% 16%)"/><stop offset="1" stop-color="hsl(${hue} 50% 4%)"/></radialGradient>
-        <linearGradient id="gloss" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".35" stop-color="#fff" stop-opacity="0"/></linearGradient>
+        <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="hsl(${hue} 14% 93%)"/><stop offset=".72" stop-color="hsl(${hue} 12% 86%)"/><stop offset="1" stop-color="hsl(${hue} 10% 80%)"/></linearGradient>
+        <radialGradient id="spot" cx="50%" cy="35%" r="60%"><stop offset="0" stop-color="#fff" stop-opacity=".7"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+        <filter id="soft" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
+        <linearGradient id="gloss" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset=".3" stop-color="#fff" stop-opacity="0"/></linearGradient>
       </defs>
-      <rect width="640" height="450" fill="url(#bg)"/>
-      <ellipse cx="320" cy="420" rx="250" ry="22" fill="hsl(${hue} 80% 60% / .12)"/>
-      ${body}
-      <rect width="640" height="450" fill="url(#gloss)"/>
+      <rect width="640" height="480" fill="url(#bg)"/>
+      <rect width="640" height="480" fill="url(#spot)"/>
+      <ellipse cx="320" cy="430" rx="230" ry="18" fill="rgba(20,28,32,.28)" filter="url(#soft)"/>
+      <g transform="translate(0 15)">${body}</g>
+      <rect width="640" height="480" fill="url(#gloss)"/>
     </svg>`;
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg.replace(/\s{2,}/g, " "));
   }

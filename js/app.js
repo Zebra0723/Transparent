@@ -8,6 +8,7 @@
   const DIFFICULTY = ["", "Easy", "Moderate", "Involved", "Hard", "Expert"];
   const STATUSES = ["open", "building", "built"];
   const MAX_PHOTOS = 12;
+  const SEED_VERSION = 3;
 
   const state = {
     mods: [],
@@ -29,6 +30,7 @@
   const lines = (s) => String(s || "").split("\n").map((l) => l.trim()).filter(Boolean);
   const csv = (s) => [...new Set(String(s || "").split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 10);
   const safeUrl = (u) => (/^https?:\/\//i.test(u || "") ? u : "");
+  const pad = (n, w = 3) => String(n).padStart(w, "0");
 
   function timeAgo(ts) {
     const s = Math.max(1, Math.round((Date.now() - ts) / 1000));
@@ -36,6 +38,7 @@
     for (const [n, u] of units) if (s >= n) return Math.floor(s / n) + u + " ago";
     return "just now";
   }
+  const fmtDate = (ts) => new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
   function toast(msg) {
     const t = $("#toast");
@@ -51,36 +54,50 @@
 
   const ICON = {
     heart: '<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9.2-9C1.4 8 3.3 4.5 6.8 4.5c2 0 3.4 1.1 4.2 2.4h2c.8-1.3 2.2-2.4 4.2-2.4 3.5 0 5.4 3.5 4 6.5C19 15.6 12 20 12 20z" stroke-linejoin="round"/></svg>',
-    up: '<svg viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></svg>',
     close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
     left: '<svg viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></svg>',
     right: '<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>',
-    edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
-    trash: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 13h8l1-13"/></svg>',
-    link: '<svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>',
-    wrench: '<svg viewBox="0 0 24 24"><path d="M14.5 5.5a4 4 0 0 0 5 5L12 18a2.1 2.1 0 0 1-3-3z"/><path d="m4 20 3-3"/></svg>',
   };
 
-  const difficultyBars = (d) => `<span class="difficulty" title="${esc(DIFFICULTY[d])}">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= d ? "on" : ""}"></i>`).join("")}</span>`;
+  const meter = (d) => `<span class="meter" aria-hidden="true">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= d ? "on" : ""}"></i>`).join("")}</span>`;
+
+  // catalogue numbers follow the order mods were added: T-001, T-002 …
+  let catalogue = new Map();
+  function indexCatalogue() {
+    catalogue = new Map([...state.mods].sort((a, b) => a.createdAt - b.createdAt).map((m, i) => [m.id, "T-" + pad(i + 1)]));
+  }
+  const catNo = (m) => catalogue.get(m.id) || "T-" + pad(state.mods.length + 1);
 
   // ---------- data ----------
   async function load() {
     const seeded = await Store.get("meta", "seeded");
     if (!seeded) await seed();
+    else if ((seeded.version || 1) < SEED_VERSION) await refreshSeedArt();
     [state.mods, state.ideas] = await Promise.all([Store.all("mods"), Store.all("ideas")]);
+    indexCatalogue();
   }
 
   async function seed() {
     await Promise.all([Store.clear("mods"), Store.clear("ideas")]);
     await Store.putMany("mods", Seed.mods());
     await Store.putMany("ideas", Seed.ideas());
-    await Store.put("meta", { id: "seeded", at: Date.now() });
+    await Store.put("meta", { id: "seeded", at: Date.now(), version: SEED_VERSION });
+  }
+
+  // swap in the newest sample artwork without touching anything the user added
+  async function refreshSeedArt() {
+    const fresh = new Map(Seed.mods().map((m) => [m.id, m.photos]));
+    const mods = await Store.all("mods");
+    const updated = mods.filter((m) => m.seed && fresh.has(m.id)).map((m) => ({ ...m, photos: fresh.get(m.id) }));
+    if (updated.length) await Store.putMany("mods", updated);
+    await Store.put("meta", { id: "seeded", at: Date.now(), version: SEED_VERSION });
   }
 
   async function saveMod(mod) {
     await Store.put("mods", mod);
     const i = state.mods.findIndex((m) => m.id === mod.id);
     if (i >= 0) state.mods[i] = mod; else state.mods.push(mod);
+    indexCatalogue();
   }
 
   async function saveIdea(idea) {
@@ -113,15 +130,18 @@
     showView(view);
     if (view === "submit") {
       const ideaId = params.get("idea");
-      const editing = $("#mod-form").elements.id.value;
       if (ideaId) fillForm(null, state.ideas.find((i) => i.id === ideaId));
-      else if (editing) fillForm(null);
+      else if (form.elements.id.value || form.elements.fromIdea.value) fillForm(null);
     }
   }
 
   function showView(view) {
     $$(".view").forEach((v) => (v.hidden = v.dataset.view !== view));
-    $$(".nav a").forEach((a) => a.classList.toggle("is-active", a.dataset.route === view));
+    $$(".nav a").forEach((a) => {
+      const on = a.dataset.route === view;
+      a.classList.toggle("is-active", on);
+      if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
     if (view === "mods") renderMods();
     if (view === "ideas") renderIdeas();
     if (view === "submit") renderPreview();
@@ -129,20 +149,43 @@
     showView.current = view;
   }
 
-  // ---------- mods gallery ----------
+  // ---------- archive ----------
   function renderStats() {
     const photos = state.mods.reduce((n, m) => n + (m.photos?.length || 0), 0);
     const built = state.ideas.filter((i) => i.status === "built").length;
-    const stats = [["Mods", state.mods.length], ["Photos", photos], ["Ideas", state.ideas.length], ["Ideas built", built]];
-    $("#stats").innerHTML = stats.map(([k, v]) => `<div class="stat"><dt>${k}</dt><dd>${v}</dd></div>`).join("");
+    const stats = [["Exhibits", state.mods.length], ["Photographs", photos], ["Ideas pitched", state.ideas.length], ["Ideas built", built]];
+    $("#stats").innerHTML = stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${pad(v, 2)}</dd></div>`).join("");
   }
 
-  function renderChips() {
-    const present = new Set(state.mods.map((m) => m.category));
-    const cats = ["All", ...CATEGORIES.filter((c) => present.has(c))];
+  function renderFeatured() {
+    const host = $("#featured");
+    const m = [...state.mods].sort((a, b) => b.likes - a.likes)[0];
+    if (!m) { host.innerHTML = ""; return; }
+    host.innerHTML = `
+      <article class="feature glass" data-id="${esc(m.id)}" tabindex="0" role="link" aria-label="Featured: ${esc(m.title)}">
+        <div class="feature-media">${m.photos?.[0] ? `<img src="${esc(m.photos[0])}" alt="">` : ""}</div>
+        <div class="feature-body">
+          <p class="feature-tag">Featured exhibit · ${esc(catNo(m))}</p>
+          <h2 class="feature-title">${esc(m.title)}</h2>
+          <p class="feature-desc">${esc(m.description)}</p>
+          <dl class="specs">
+            <div><dt>Device</dt><dd>${esc(m.device)}</dd></div>
+            <div><dt>Difficulty</dt><dd>${meter(m.difficulty)}${esc(DIFFICULTY[m.difficulty])}</dd></div>
+            <div><dt>Builder</dt><dd>${esc(m.author || "Anonymous")}</dd></div>
+          </dl>
+          <span class="feature-link">View exhibit <span aria-hidden="true">→</span></span>
+        </div>
+      </article>`;
+  }
+
+  function renderTabs() {
+    const counts = {};
+    state.mods.forEach((m) => (counts[m.category] = (counts[m.category] || 0) + 1));
+    const cats = ["All", ...CATEGORIES.filter((c) => counts[c])];
     if (!cats.includes(state.category)) state.category = "All";
+    counts.All = state.mods.length;
     $("#category-chips").innerHTML = cats
-      .map((c) => `<button class="chip ${c === state.category ? "is-active" : ""}" data-cat="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)}</button>`)
+      .map((c) => `<button class="tab ${c === state.category ? "is-active" : ""}" data-cat="${esc(c)}" aria-pressed="${c === state.category}">${esc(c)}<sup>${counts[c]}</sup></button>`)
       .join("");
   }
 
@@ -165,34 +208,31 @@
 
   function cardHTML(m, { preview = false, index = 0 } = {}) {
     const cover = m.photos?.[0];
-    const tags = (m.tags || []).slice(0, 3);
-    const tag = preview ? "div" : "article";
+    const attrs = preview ? "" : `data-id="${esc(m.id)}" tabindex="0" role="link" aria-label="${esc(m.title)}"`;
     return `
-      <${tag} class="mod-card glass" ${preview ? "" : `data-id="${esc(m.id)}" tabindex="0" role="link" aria-label="${esc(m.title)}"`} style="animation-delay:${Math.min(index, 10) * 40}ms">
-        <div class="cover">
+      <article class="card glass" ${attrs} style="animation-delay:${Math.min(index, 9) * 50}ms">
+        <div class="card-media">
           ${cover ? `<img src="${esc(cover)}" alt="" loading="lazy">` : ""}
-          <div class="cover-badges">
-            <span class="badge">${esc(m.category || "Other")}</span>
-            ${m.photos?.length > 1 ? `<span class="badge">${m.photos.length} photos</span>` : ""}
-          </div>
+          ${m.photos?.length > 1 ? `<span class="card-count">${m.photos.length} photos</span>` : ""}
         </div>
         <div class="card-body">
-          <span class="card-device">${esc(m.device || "Device")}</span>
-          <h3>${esc(m.title || "Untitled mod")}</h3>
-          <p class="card-desc">${esc(m.description || "Describe your mod…")}</p>
-          ${tags.length ? `<div class="tags">${tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join("")}</div>` : ""}
+          <div class="card-meta"><b>${esc(catNo(m))}</b><span>${esc(m.category || "Other")}</span></div>
+          <h3 class="card-title">${esc(m.title || "Untitled mod")}</h3>
+          <p class="card-device">${esc(m.device || "Device")}</p>
           <div class="card-foot">
-            ${difficultyBars(m.difficulty || 1)}
-            <button class="like-btn ${m.liked ? "is-liked" : ""}" ${preview ? "disabled" : `data-like="${esc(m.id)}"`} aria-label="Like" aria-pressed="${!!m.liked}">${ICON.heart}<span>${m.likes || 0}</span></button>
+            <span>${meter(m.difficulty || 1)}${esc(DIFFICULTY[m.difficulty || 1])}</span>
+            <button class="like ${m.liked ? "is-liked" : ""}" ${preview ? "disabled" : `data-like="${esc(m.id)}"`} aria-label="Like ${esc(m.title)}" aria-pressed="${!!m.liked}">${ICON.heart}<span>${m.likes || 0}</span></button>
           </div>
         </div>
-      </${tag}>`;
+      </article>`;
   }
 
   function renderMods() {
     renderStats();
-    renderChips();
+    renderFeatured();
+    renderTabs();
     const list = filteredMods();
+    $("#archive-count").textContent = pad(list.length, 2);
     $("#mod-grid").innerHTML = list.map((m, i) => cardHTML(m, { index: i })).join("");
     $("#mod-empty").hidden = list.length > 0;
   }
@@ -208,12 +248,13 @@
       btn.setAttribute("aria-pressed", m.liked);
       btn.querySelector("span").textContent = m.likes;
       btn.classList.add("pop");
-      setTimeout(() => btn.classList.remove("pop"), 250);
+      setTimeout(() => btn.classList.remove("pop"), 300);
     });
   }
 
-  // ---------- mod detail modal ----------
+  // ---------- detail modal ----------
   const modal = $("#mod-modal");
+  const currentModId = () => (location.hash.startsWith("#/mod/") ? decodeURIComponent(location.hash.slice(6)) : null);
 
   function openMod(id) {
     const m = state.mods.find((x) => x.id === id);
@@ -225,55 +266,63 @@
   }
 
   function renderModal(m) {
-    const photos = m.photos?.length ? m.photos : [];
+    const photos = m.photos || [];
     const i = Math.min(state.viewerIndex, Math.max(0, photos.length - 1));
     const link = safeUrl(m.link);
     $("#modal-content").innerHTML = `
       <div class="detail">
         <div class="detail-media">
           <div class="viewer">
-            ${photos.length ? `<img src="${esc(photos[i])}" alt="${esc(m.title)} photo ${i + 1} of ${photos.length}">` : `<img src="${esc(Seed.art("board", 180, 1))}" alt="">`}
+            <img src="${esc(photos[i] || Seed.art("board", 180, 1))}" alt="${esc(m.title)}, photo ${i + 1} of ${Math.max(1, photos.length)}">
             ${photos.length > 1 ? `
-              <div class="viewer-nav prev"><button class="icon-btn" data-nav="-1" aria-label="Previous photo">${ICON.left}</button></div>
-              <div class="viewer-nav next"><button class="icon-btn" data-nav="1" aria-label="Next photo">${ICON.right}</button></div>` : ""}
+              <button class="viewer-btn prev" data-nav="-1" aria-label="Previous photo">${ICON.left}</button>
+              <button class="viewer-btn next" data-nav="1" aria-label="Next photo">${ICON.right}</button>
+              <span class="viewer-index">${pad(i + 1, 2)} / ${pad(photos.length, 2)}</span>` : ""}
           </div>
           ${photos.length > 1 ? `<div class="thumbs">${photos.map((p, k) => `<button class="${k === i ? "is-active" : ""}" data-thumb="${k}" aria-label="Photo ${k + 1}"><img src="${esc(p)}" alt=""></button>`).join("")}</div>` : ""}
         </div>
         <div class="detail-info">
-          <div class="detail-head">
+          <div class="detail-top">
             <div>
-              <p class="eyebrow">${esc(m.category)} · ${esc(m.device)}</p>
-              <h2 id="modal-title">${esc(m.title)}</h2>
+              <p class="detail-tag">Exhibit ${esc(catNo(m))} · ${esc(m.category)}</p>
+              <h2 class="detail-title" id="modal-title">${esc(m.title)}</h2>
+              <p class="detail-device">${esc(m.device)}</p>
             </div>
-            <button class="icon-btn close-btn" data-close aria-label="Close">${ICON.close}</button>
+            <button class="close-btn" data-close aria-label="Close">${ICON.close}</button>
           </div>
-          <dl class="detail-meta">
-            <div><dt>Difficulty</dt><dd>${difficultyBars(m.difficulty)} ${esc(DIFFICULTY[m.difficulty])}</dd></div>
-            <div><dt>Build time</dt><dd>${m.hours ? esc(m.hours) + " h" : "—"}</dd></div>
+
+          <dl class="specs">
+            <div><dt>Difficulty</dt><dd>${meter(m.difficulty)}${esc(DIFFICULTY[m.difficulty])}</dd></div>
+            <div><dt>Build time</dt><dd>${m.hours ? esc(m.hours) + " hours" : "—"}</dd></div>
             <div><dt>Builder</dt><dd>${esc(m.author || "Anonymous")}</dd></div>
+            <div><dt>Added</dt><dd>${fmtDate(m.createdAt)}</dd></div>
           </dl>
+
           <p class="detail-desc">${esc(m.description)}</p>
-          ${m.parts?.length ? `<section><h4>Parts &amp; materials</h4><ul class="parts">${m.parts.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></section>` : ""}
-          ${m.steps?.length ? `<section><h4>Build steps</h4><ol class="steps">${m.steps.map((p) => `<li>${esc(p)}</li>`).join("")}</ol></section>` : ""}
-          ${m.tags?.length ? `<div class="tags">${m.tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join("")}</div>` : ""}
-          ${link ? `<a href="${esc(link)}" target="_blank" rel="noopener noreferrer" class="mono">${esc(link.replace(/^https?:\/\//, "").slice(0, 60))} ↗</a>` : ""}
-          <section>
-            <h4>Comments (${m.comments?.length || 0})</h4>
-            <div class="comments">
-              ${(m.comments || []).map((c) => `<div class="comment"><b>${esc(c.author)}</b> <span class="mono muted">${timeAgo(c.at)}</span><p>${esc(c.text)}</p></div>`).join("")}
-              <form class="comment-form" data-comment="${esc(m.id)}">
-                <input name="text" maxlength="500" placeholder="Say something nice about it…" aria-label="Comment" required>
-                <button class="btn btn--sm btn--primary" type="submit">Post</button>
-              </form>
-            </div>
-          </section>
+
+          ${m.parts?.length ? `<section><h3 class="detail-h"><span>Parts &amp; materials</span><span>${pad(m.parts.length, 2)}</span></h3><ol class="numbered">${m.parts.map((p) => `<li>${esc(p)}</li>`).join("")}</ol></section>` : ""}
+          ${m.steps?.length ? `<section><h3 class="detail-h"><span>Build steps</span><span>${pad(m.steps.length, 2)}</span></h3><ol class="numbered numbered--steps">${m.steps.map((p) => `<li>${esc(p)}</li>`).join("")}</ol></section>` : ""}
+          ${m.tags?.length ? `<div class="tags">${m.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
+          ${link ? `<a href="${esc(link)}" target="_blank" rel="noopener noreferrer" class="detail-link">${esc(link.replace(/^https?:\/\//, "").slice(0, 70))} ↗</a>` : ""}
+
           <div class="detail-actions">
-            <button class="btn btn--sm like-btn-lg ${m.liked ? "is-liked" : ""}" data-like-lg="${esc(m.id)}">${ICON.heart} ${m.liked ? "Liked" : "Like"} · ${m.likes}</button>
-            <button class="btn btn--sm" data-share="${esc(m.id)}">${ICON.link} Copy link</button>
-            <a class="btn btn--sm" href="#/edit/${encodeURIComponent(m.id)}">${ICON.edit} Edit</a>
-            <button class="btn btn--sm btn--danger" data-delete="${esc(m.id)}">${ICON.trash} Delete</button>
+            <button class="btn btn--sm btn--ghost ${m.liked ? "is-liked" : ""}" data-like-lg="${esc(m.id)}" aria-pressed="${!!m.liked}">${ICON.heart} ${m.likes}</button>
+            <button class="btn btn--sm btn--ghost" data-share="${esc(m.id)}">Copy link</button>
+            <a class="btn btn--sm btn--ghost" href="#/edit/${encodeURIComponent(m.id)}">Edit</a>
+            <button class="btn btn--sm btn--text btn--danger" data-delete="${esc(m.id)}">Delete</button>
           </div>
-          <p class="mono muted">Posted ${timeAgo(m.createdAt)}${m.updatedAt ? " · edited " + timeAgo(m.updatedAt) : ""}</p>
+
+          <section>
+            <h3 class="detail-h"><span>Comments</span><span>${pad(m.comments?.length || 0, 2)}</span></h3>
+            <div class="comments">
+              ${(m.comments || []).map((c) => `<div class="comment"><div class="comment-head"><b>${esc(c.author)}</b><span>${timeAgo(c.at)}</span></div><p>${esc(c.text)}</p></div>`).join("")}
+            </div>
+            <form class="comment-form" data-comment="${esc(m.id)}">
+              <input name="text" maxlength="500" placeholder="Add a comment" aria-label="Comment" required>
+              <button class="btn btn--sm btn--ink" type="submit">Post</button>
+            </form>
+          </section>
+          ${m.updatedAt ? `<p class="posted">Last edited ${timeAgo(m.updatedAt)}</p>` : ""}
         </div>
       </div>`;
   }
@@ -287,12 +336,13 @@
     if (e.target === modal) return closeModal();
     const t = e.target.closest("button, a");
     if (!t) return;
-    const m = state.mods.find((x) => x.id === location.hash.split("/")[2] || x.id === t.dataset.likeLg || x.id === t.dataset.delete || x.id === t.dataset.share);
+    const m = state.mods.find((x) => x.id === currentModId());
     if (t.hasAttribute("data-close")) return closeModal();
     if (t.dataset.nav && m) {
       const n = m.photos.length;
       state.viewerIndex = (state.viewerIndex + Number(t.dataset.nav) + n) % n;
       renderModal(m);
+      $(`[data-nav="${t.dataset.nav}"]`, modal)?.focus();
     } else if (t.dataset.thumb && m) {
       state.viewerIndex = Number(t.dataset.thumb);
       renderModal(m);
@@ -306,6 +356,7 @@
       if (!confirm("Delete this mod and its photos? This can't be undone.")) return;
       await Store.remove("mods", t.dataset.delete);
       state.mods = state.mods.filter((x) => x.id !== t.dataset.delete);
+      indexCatalogue();
       closeModal();
       renderMods();
       toast("Mod deleted");
@@ -313,12 +364,12 @@
   });
 
   modal.addEventListener("submit", async (e) => {
-    const form = e.target.closest("[data-comment]");
-    if (!form) return;
+    const f = e.target.closest("[data-comment]");
+    if (!f) return;
     e.preventDefault();
-    const text = form.elements.text.value.trim();
+    const text = f.elements.text.value.trim();
     if (!text) return;
-    const m = state.mods.find((x) => x.id === form.dataset.comment);
+    const m = state.mods.find((x) => x.id === f.dataset.comment);
     m.comments = [...(m.comments || []), { id: uid("c"), author: lsGet("transparent:name") || "You", text, at: Date.now() }];
     await saveMod(m);
     renderModal(m);
@@ -337,17 +388,21 @@
     }
   });
 
-  // ---------- gallery events ----------
-  $("#mod-grid").addEventListener("click", (e) => {
+  // ---------- archive events ----------
+  function openFromEvent(e) {
     const like = e.target.closest("[data-like]");
     if (like) { e.stopPropagation(); toggleLike(like.dataset.like); return; }
-    const card = e.target.closest(".mod-card[data-id]");
+    const card = e.target.closest("[data-id]");
     if (card) location.hash = "#/mod/" + encodeURIComponent(card.dataset.id);
-  });
-  $("#mod-grid").addEventListener("keydown", (e) => {
+  }
+  function keyOpen(e) {
     if (e.key !== "Enter" && e.key !== " ") return;
-    const card = e.target.closest(".mod-card[data-id]");
+    const card = e.target.closest("[data-id]");
     if (card && e.target === card) { e.preventDefault(); location.hash = "#/mod/" + encodeURIComponent(card.dataset.id); }
+  }
+  ["#mod-grid", "#featured"].forEach((sel) => {
+    $(sel).addEventListener("click", openFromEvent);
+    $(sel).addEventListener("keydown", keyOpen);
   });
   $("#category-chips").addEventListener("click", (e) => {
     const c = e.target.closest("[data-cat]");
@@ -360,13 +415,12 @@
 
   // ---------- submit form ----------
   const form = $("#mod-form");
-
   $("#category-select").innerHTML = CATEGORIES.map((c) => `<option>${c}</option>`).join("");
 
   function renderDifficulty() {
     const v = Number(form.elements.difficulty.value);
     $("#difficulty-input").innerHTML = [1, 2, 3, 4, 5]
-      .map((i) => `<button type="button" role="radio" aria-checked="${i === v}" class="${i <= v ? "on" : ""}" data-d="${i}" title="${DIFFICULTY[i]}">${i}</button>`)
+      .map((i) => `<button type="button" role="radio" aria-checked="${i === v}" aria-label="${i}, ${DIFFICULTY[i]}" class="${i === v ? "sel" : i < v ? "on" : ""}" data-d="${i}" title="${DIFFICULTY[i]}">${i}</button>`)
       .join("");
   }
   $("#difficulty-input").addEventListener("click", (e) => {
@@ -396,8 +450,9 @@
   }
 
   function renderPreview() {
-    const m = { ...formData(), likes: 0 };
-    if (!m.photos.length) m.photos = [Seed.art("board", 175, 3)];
+    const editing = state.mods.find((m) => m.id === form.elements.id.value);
+    const m = { ...formData(), id: editing?.id || "__preview", likes: editing?.likes || 0 };
+    if (!m.photos.length) m.photos = [Seed.art("board", 190, 3)];
     $("#live-preview").innerHTML = cardHTML(m, { preview: true });
   }
 
@@ -406,10 +461,10 @@
       .map((p, i) => `
         <li>
           <img src="${esc(p)}" alt="Photo ${i + 1}">
-          ${i === 0 ? '<span class="cover-tag">cover</span>' : ""}
+          ${i === 0 ? '<span class="cover-tag">Cover</span>' : ""}
           <div class="ph-actions">
-            ${i > 0 ? `<button type="button" data-cover="${i}" title="Make cover" aria-label="Make photo ${i + 1} the cover">★</button>` : "<span></span>"}
-            <button type="button" data-remove="${i}" title="Remove" aria-label="Remove photo ${i + 1}">✕</button>
+            ${i > 0 ? `<button type="button" data-cover="${i}" aria-label="Make photo ${i + 1} the cover">Cover</button>` : "<span></span>"}
+            <button type="button" data-remove="${i}" aria-label="Remove photo ${i + 1}">Remove</button>
           </div>
         </li>`)
       .join("");
@@ -424,7 +479,7 @@
     if (r || c) renderPhotoPreviews();
   });
 
-  // Downscale photos so IndexedDB stays lean and pages stay fast.
+  // downscale photos so storage stays lean and pages stay fast
   function readPhoto(file) {
     return new Promise((resolve, reject) => {
       if (!file.type.startsWith("image/")) return reject(new Error("Not an image"));
@@ -436,16 +491,16 @@
         const w = Math.round(img.naturalWidth * scale), h = Math.round(img.naturalHeight * scale);
         const c = document.createElement("canvas");
         c.width = w; c.height = h;
-        const ctx = c.getContext("2d");
-        ctx.fillStyle = "#0b1416";
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
+        const cx = c.getContext("2d");
+        cx.fillStyle = "#0d1011";
+        cx.fillRect(0, 0, w, h);
+        cx.drawImage(img, 0, 0, w, h);
         URL.revokeObjectURL(url);
         let data = c.toDataURL("image/webp", 0.85);
         if (!data.startsWith("data:image/webp")) data = c.toDataURL("image/jpeg", 0.85);
         resolve(data);
       };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't read image")); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't read that image")); };
       img.src = url;
     });
   }
@@ -454,8 +509,8 @@
     const list = [...files].filter((f) => f.type.startsWith("image/"));
     if (!list.length) return toast("Those weren't images");
     const room = MAX_PHOTOS - state.draftPhotos.length;
-    if (room <= 0) return toast(`Max ${MAX_PHOTOS} photos per mod`);
-    if (list.length > room) toast(`Only the first ${room} photo(s) were added (max ${MAX_PHOTOS})`);
+    if (room <= 0) return toast(`Up to ${MAX_PHOTOS} photos per mod`);
+    if (list.length > room) toast(`Added the first ${room} (max ${MAX_PHOTOS})`);
     for (const f of list.slice(0, room)) {
       try { state.draftPhotos.push(await readPhoto(f)); } catch (err) { toast(err.message); }
     }
@@ -467,7 +522,6 @@
   ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("is-over"); }));
   ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("is-over"); }));
   dz.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
-  // paste images straight into the form
   document.addEventListener("paste", (e) => {
     if ($('[data-view="submit"]').hidden) return;
     const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
@@ -496,8 +550,8 @@
       f.tags.value = (idea.tags || []).join(", ");
     }
     state.draftPhotos = mod ? [...(mod.photos || [])] : [];
-    $("#form-eyebrow").textContent = mod ? "Editing" : idea ? "Building an idea" : "New build";
-    $("#form-title").textContent = mod ? `Edit “${mod.title}”` : idea ? "Turn this idea into a mod" : "Add a transparent mod";
+    $("#form-eyebrow").textContent = mod ? `Editing ${catNo(mod)}` : idea ? "From the idea lab" : "New exhibit";
+    $("#form-title").innerHTML = mod ? `Edit <em>${esc(mod.title)}</em>.` : idea ? "Build this <em>idea</em>." : "Submit a <em>mod</em>.";
     $("#form-submit").textContent = mod ? "Save changes" : "Publish mod";
     $$(".field.invalid", form).forEach((x) => x.classList.remove("invalid"));
     renderDifficulty();
@@ -505,7 +559,7 @@
   }
 
   $("#form-reset").addEventListener("click", () => {
-    if (form.elements.id.value) { location.hash = "#/submit"; }
+    if (form.elements.id.value || form.elements.fromIdea.value) history.replaceState(null, "", "#/submit");
     fillForm(null);
   });
 
@@ -536,45 +590,49 @@
       await saveMod(mod);
     } catch (err) {
       console.error(err);
-      return toast("Couldn't save — your browser storage may be full");
+      return toast("Couldn't save. Your browser storage may be full.");
     }
 
-    // mark the source idea as built
     const idea = state.ideas.find((i) => i.id === f.fromIdea.value);
     if (idea) { idea.status = "built"; idea.builtModId = mod.id; await saveIdea(idea); }
 
-    toast(existing ? "Changes saved" : "Mod published ✨");
+    toast(existing ? "Changes saved" : `Published as ${catNo(mod)}`);
     fillForm(null);
     location.hash = "#/mod/" + encodeURIComponent(mod.id);
   });
 
   // ---------- ideas ----------
   function renderIdeas() {
-    let list = state.ideas.filter((i) => state.ideaStatus === "all" || i.status === state.ideaStatus);
+    const list = state.ideas.filter((i) => state.ideaStatus === "all" || i.status === state.ideaStatus);
     list.sort(state.ideaSort === "top" ? (a, b) => b.votes - a.votes || b.createdAt - a.createdAt : (a, b) => b.createdAt - a.createdAt);
     $("#idea-list").innerHTML = list.length
-      ? list.map((i, k) => `
-        <li class="idea glass" style="animation-delay:${Math.min(k, 10) * 40}ms">
-          <button class="vote ${i.voted ? "is-voted" : ""}" data-vote="${esc(i.id)}" aria-pressed="${!!i.voted}" aria-label="Upvote">${ICON.up}<span>${i.votes}</span></button>
+      ? list.map((i, k) => {
+          const built = i.builtModId && state.mods.some((m) => m.id === i.builtModId);
+          return `
+        <li class="idea" style="animation-delay:${Math.min(k, 9) * 50}ms">
+          <button class="vote ${i.voted ? "is-voted" : ""}" data-vote="${esc(i.id)}" aria-pressed="${!!i.voted}" aria-label="Vote for ${esc(i.title)}, ${i.votes} votes">
+            <b>${i.votes}</b><small>${i.voted ? "Voted" : "Vote"}</small>
+          </button>
           <div class="idea-main">
             <div class="idea-top">
               <div>
-                <h4>${esc(i.title)}</h4>
-                <span class="idea-meta">${i.device ? esc(i.device) + " · " : ""}${esc(i.author || "Anonymous")} · ${timeAgo(i.createdAt)}</span>
+                <h3 class="idea-title">${esc(i.title)}</h3>
+                <p class="idea-meta">${i.device ? esc(i.device) + " · " : ""}${esc(i.author || "Anonymous")} · ${timeAgo(i.createdAt)}</p>
               </div>
-              <button class="status status--${esc(i.status)}" data-status-cycle="${esc(i.id)}" title="Click to change status">${esc(i.status)}</button>
+              <button class="status status--${esc(i.status)}" data-status-cycle="${esc(i.id)}" title="Change status">${esc(i.status)}</button>
             </div>
             ${i.description ? `<p class="idea-desc">${esc(i.description)}</p>` : ""}
-            ${i.tags?.length ? `<div class="tags">${i.tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join("")}</div>` : ""}
+            ${i.tags?.length ? `<div class="tags">${i.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
             <div class="idea-actions">
-              ${i.builtModId && state.mods.some((m) => m.id === i.builtModId)
-                ? `<a class="btn btn--sm" href="#/mod/${encodeURIComponent(i.builtModId)}">See the build →</a>`
-                : `<a class="btn btn--sm" href="#/submit?idea=${encodeURIComponent(i.id)}">${ICON.wrench} Build this</a>`}
-              <button class="btn btn--sm btn--danger" data-idea-delete="${esc(i.id)}">${ICON.trash} Remove</button>
+              ${built
+                ? `<a class="btn btn--sm btn--ghost" href="#/mod/${encodeURIComponent(i.builtModId)}">See the build →</a>`
+                : `<a class="btn btn--sm btn--ghost" href="#/submit?idea=${encodeURIComponent(i.id)}">Build this →</a>`}
+              <button class="btn btn--text btn--danger" data-idea-delete="${esc(i.id)}">Remove</button>
             </div>
           </div>
-        </li>`).join("")
-      : `<li class="empty glass">No ideas here yet. Pitch one!</li>`;
+        </li>`;
+        }).join("")
+      : `<li class="idea-empty">No ideas here yet. Pitch the first one.</li>`;
   }
 
   $("#idea-form").addEventListener("submit", async (e) => {
@@ -593,9 +651,9 @@
     state.ideaStatus = "all";
     state.ideaSort = "new";
     $("#idea-sort").value = "new";
-    $$("#idea-filter .chip").forEach((c) => c.classList.toggle("is-active", c.dataset.status === "all"));
+    $$("#idea-filter .tab").forEach((c) => c.classList.toggle("is-active", c.dataset.status === "all"));
     renderIdeas();
-    toast("Idea posted 💡");
+    toast("Idea posted");
   });
 
   $("#idea-list").addEventListener("click", async (e) => {
@@ -626,7 +684,7 @@
     const c = e.target.closest("[data-status]");
     if (!c) return;
     state.ideaStatus = c.dataset.status;
-    $$("#idea-filter .chip").forEach((x) => x.classList.toggle("is-active", x === c));
+    $$("#idea-filter .tab").forEach((x) => x.classList.toggle("is-active", x === c));
     renderIdeas();
   });
   $("#idea-sort").addEventListener("change", (e) => { state.ideaSort = e.target.value; renderIdeas(); });
@@ -648,7 +706,7 @@
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      if (data.app !== "transparent" || !Array.isArray(data.mods) || !Array.isArray(data.ideas)) throw new Error("Not a Transparent backup");
+      if (data.app !== "transparent" || !Array.isArray(data.mods) || !Array.isArray(data.ideas)) throw new Error("That isn't a Transparent backup");
       const validId = (x) => x && typeof x.id === "string";
       const mods = data.mods.filter(validId).map((m) => ({ ...m, photos: (m.photos || []).filter((p) => typeof p === "string" && p.startsWith("data:image/")) }));
       const ideas = data.ideas.filter(validId);
@@ -673,29 +731,32 @@
   });
 
   // ---------- theme + x-ray ----------
-  function setTheme(t) {
+  function syncThemeUI() {
+    const t = document.documentElement.dataset.theme;
+    $("#theme-toggle .tool-label").textContent = t === "dark" ? "Light" : "Dark";
+    document.querySelector('meta[name="theme-color"]').content = t === "dark" ? "#0a0c0d" : "#e9edee";
+  }
+  $("#theme-toggle").addEventListener("click", () => {
+    const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = t;
     lsSet("transparent:theme", t);
-    document.querySelector('meta[name="theme-color"]').content = t === "light" ? "#dfe9ea" : "#0b1416";
+    syncThemeUI();
     window.Internals?.redraw();
-  }
-  document.querySelector('meta[name="theme-color"]').content = document.documentElement.dataset.theme === "light" ? "#dfe9ea" : "#0b1416";
-  $("#theme-toggle").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light"));
+  });
+  syncThemeUI();
 
   $("#xray-toggle").addEventListener("click", (e) => {
     const on = document.body.classList.toggle("xray");
     e.currentTarget.setAttribute("aria-pressed", on);
-    toast(on ? "X-ray on — internals exposed" : "X-ray off");
   });
 
   // ---------- boot ----------
   window.addEventListener("hashchange", route);
   load()
     .then(() => {
-      renderDifficulty();
       fillForm(null);
       route();
-      if (!Store.persistent) toast("Storage unavailable — changes won't be saved this session");
+      if (!Store.persistent) toast("Storage unavailable. Changes won't be saved this session.");
     })
     .catch((err) => {
       console.error(err);
